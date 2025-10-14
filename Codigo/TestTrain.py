@@ -3,9 +3,9 @@ import shutil
 import random
 
 # --- Config ---
-ORIG_DIR = "dataset/OriginalDataset"
-AUG_DIR  = "dataset/AugmentedAlzheimerDataset"
-TARGET_DIR = "dataset/Processed"
+ORIG_DIR = "Codigo/dataset/OriginalDataset"
+AUG_DIR  = "Codigo/dataset/AugmentedAlzheimerDataset"
+TARGET_DIR = "Codigo/dataset/Processed"
 CLASSES = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented']
 SPLIT = {'train':0.7, 'val':0.15, 'test':0.15}
 random.seed(42)

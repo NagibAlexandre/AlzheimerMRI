@@ -1,6 +1,7 @@
 __pycache__/
 OriginalDataset/
 Dataset/
+Processed/
 AugmentedAlzheimerDataset/
 *.png
 *.jpg
