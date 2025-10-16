@@ -111,6 +111,8 @@ class CnnClient(fl.client.NumPyClient):
                 total += labels.size(0)
                 loop.set_postfix(loss=loss.item(), acc=correct/total)
 
+        torch.save(model.state_dict(), "Codigo/model.pth")
+
         return self.get_parameters(), len(train_loader.dataset), {}
 
     def evaluate(self, parameters, config=None):

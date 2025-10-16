@@ -3,6 +3,7 @@ OriginalDataset/
 Dataset/
 Processed/
 AugmentedAlzheimerDataset/
+Codigo/flower/tempCodeRunnerFile.py
 *.png
 *.jpg
 *.jpeg

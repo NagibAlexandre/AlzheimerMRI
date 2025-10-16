@@ -1,49 +1,57 @@
 import torch
+import torch.nn as nn
 from torchvision import transforms, models
 from PIL import Image
-import torch.nn as nn
-import sys
+import os
 
 # --- Config ---
-CLASSES = ['Mild Demented', 'Moderate Demented', 'Non Demented', 'Very Mild Demented']
+IMG_SIZE = 224
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+CLASSES = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented']
 MODEL_PATH = "Codigo/model.pth"
+INFER_FOLDER = "Codigo/infer"
 
-# --- Transform (mesmo usado no teste) ---
+# --- Transform para inferência ---
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((IMG_SIZE, IMG_SIZE)),
     transforms.ToTensor(),
     transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
 ])
 
 # --- Carregar modelo ---
-def load_model():
-    model = models.resnet18(pretrained=False)
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, len(CLASSES))
-    state = torch.load(MODEL_PATH, map_location=DEVICE)
-    model.load_state_dict(state)
-    model = model.to(DEVICE)
-    model.eval()
-    return model
+model = models.resnet18(weights=None)
+num_ftrs = model.fc.in_features
+model.fc = nn.Linear(num_ftrs, len(CLASSES))
+model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+model = model.to(DEVICE)
+model.eval()
 
-# --- Predição ---
-def predict_image(model, image_path):
+# --- Função de inferência ---
+def predict(image_path):
     img = Image.open(image_path).convert("RGB")
-    img = transform(img).unsqueeze(0).to(DEVICE)
-
+    img_t = transform(img).unsqueeze(0).to(DEVICE)
     with torch.no_grad():
-        output = model(img)
-        _, pred = output.max(1)
+        outputs = model(img_t)
+        probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
+    class_probs = list(zip(CLASSES, probs))
+    # Ordena do maior para o menor
+    class_probs.sort(key=lambda x: x[1], reverse=True)
+    return class_probs
 
-    return CLASSES[pred.item()]
-
+# --- Rodar inferência na pasta ---
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: python infer.py caminho/da/imagem.jpg")
-        sys.exit(1)
+    for filename in os.listdir(INFER_FOLDER):
+        if filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            path = os.path.join(INFER_FOLDER, filename)
+            class_probs = predict(path)
+            pred_class, pred_prob = class_probs[0]
+            print(f"\nArquivo observado: {filename}")
+            print("+----------------------+-------------------------------+")
+            print(f"| {'Predição':<20} | {pred_class:<29} |")
+            print(f"| {'Probabilidade':<20} | {pred_prob:<29} |")
+            print("+----------------------+-------------------------------+")
+            print("| Recusado:                                            |")
+            for cls, prob in class_probs[1:]:
+                print(f"| {cls:<20} | {prob:<29} |")
+            print("+------------------------------------------------------+")
 
-    image_path = sys.argv[1]
-    model = load_model()
-    result = predict_image(model, image_path)
-    print(f"Predição: {result}")
