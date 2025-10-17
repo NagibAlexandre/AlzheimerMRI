@@ -10,7 +10,7 @@ strategy = fl.server.strategy.FedAvg(
 )
 
 # --- Configuração do servidor ---
-server_config = fl.server.ServerConfig(num_rounds=1)
+server_config = fl.server.ServerConfig(num_rounds=3)
 
 # --- Iniciar servidor ---
 if __name__ == "__main__":
