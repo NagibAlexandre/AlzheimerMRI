@@ -45,9 +45,9 @@ train_ds = datasets.ImageFolder(os.path.join(DATA_PROCESSED,"train"), transform_
 val_ds   = datasets.ImageFolder(os.path.join(DATA_PROCESSED,"val"), transform_test)
 test_ds  = datasets.ImageFolder(os.path.join(DATA_PROCESSED,"test"), transform_test)
 
-train_loader = DataLoader(train_ds, batch_size=BATCH, shuffle=True, num_workers=4)
-val_loader   = DataLoader(val_ds, batch_size=BATCH, shuffle=False, num_workers=4)
-test_loader  = DataLoader(test_ds, batch_size=BATCH, shuffle=False, num_workers=4)
+train_loader = DataLoader(train_ds, batch_size=BATCH, shuffle=True, num_workers=3)
+val_loader   = DataLoader(val_ds, batch_size=BATCH, shuffle=False, num_workers=3)
+test_loader  = DataLoader(test_ds, batch_size=BATCH, shuffle=False, num_workers=3)
 
 # --- Modelo ---
 model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
