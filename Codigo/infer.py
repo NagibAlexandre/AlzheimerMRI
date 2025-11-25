@@ -12,15 +12,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
+import pandas as pd
+import json
 
 IMG_SIZE = 224
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CLASSES = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented']
 MODEL_PATH = "model.pth"
 TEST_FOLDER = "dataset/Processed/test"
-BATCH_SIZE = 32
 
 NUM_STREAMS = 4
+
+# Parâmetros para iteração
+BATCH_SIZES = [2, 4, 8, 16, 32, 64, 128, 256]
+NUM_WORKERS_LIST = [2, 4, 8]
+NUM_THREADS_LIST = [1, 2, 4, 8]
 
 #--------- TRANSFORMAÇÕES ---------
 transform_test = transforms.Compose([
@@ -43,26 +49,27 @@ def load_model(model_path, device):
     
     return model
 
-def load_complete_dataset():
-    print("Carregando dataset completo na memória...")
+def load_complete_dataset(batch_size, num_workers):
+    """Carrega dataset completo na memória"""
+    print(f"Carregando dataset (batch={batch_size}, workers={num_workers})...")
     
     dataset = datasets.ImageFolder(TEST_FOLDER, transform=transform_test)
     total_images = len(dataset)
     
     loader = DataLoader(
         dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=num_workers,
         pin_memory=True,
-        persistent_workers=True
+        persistent_workers=True if num_workers > 0 else False
     )
     
     all_images = []
     all_labels = []
     
     with torch.no_grad():
-        for images, labels in tqdm(loader, desc="Carregando batches", total=len(loader)):
+        for images, labels in tqdm(loader, desc="Carregando batches", total=len(loader), leave=False):
             all_images.append(images)
             all_labels.append(labels)
     
@@ -72,42 +79,42 @@ def load_complete_dataset():
     print(f"Dataset carregado: {len(all_images_tensor)} imagens")
     return all_images_tensor, all_labels_tensor, total_images
 
-def inferir():
-    print(f"=== INFERÊNCIA COM {NUM_STREAMS} CUDA STREAMS ===\n")
-    print(f"Dispositivo: {DEVICE}")
-    print(f"Batch size: {BATCH_SIZE}")
+def inferir(batch_size, num_workers, num_threads):
+    """Realiza inferência com parâmetros específicos"""
+    
+    # Configurar número de threads
+    torch.set_num_threads(num_threads)
+    
+    print(f"\n{'='*70}")
+    print(f"CONFIGURAÇÃO: Batch={batch_size} | Workers={num_workers} | Threads={num_threads}")
+    print(f"{'='*70}")
     
     if not torch.cuda.is_available():
-        print("\nAVISO: CUDA não disponível. Executando em CPU sem streams.\n")
+        print("AVISO: CUDA não disponível. Executando em CPU.")
     
-    print("Carregando modelo...")
+    # Carrega modelo (apenas uma vez seria mais eficiente, mas mantendo estrutura)
     model = load_model(MODEL_PATH, DEVICE)
     
-    print("Carregando dataset...")
-    all_images, all_labels, total_images = load_complete_dataset()
+    # Carrega dataset
+    all_images, all_labels, total_images = load_complete_dataset(batch_size, num_workers)
     
+    # Cria streams
     streams = []
     if torch.cuda.is_available():
         streams = [torch.cuda.Stream() for _ in range(NUM_STREAMS)]
-        print(f"\n{NUM_STREAMS} CUDA Streams criados")
     
     all_preds = []
     all_probs = []
     
-    num_batches = (total_images + BATCH_SIZE - 1) // BATCH_SIZE
+    num_batches = (total_images + batch_size - 1) // batch_size
     
-    print(f"\nDistribuição de batches:")
-    print(f"   Total de batches: {num_batches}")
-    print(f"   Batches por stream: ~{num_batches // NUM_STREAMS}")
-    print(f"   Imagens por batch: {BATCH_SIZE}")
-    
-    print(f"\nIniciando inferência com streams...")
+    print(f"Iniciando inferência...")
     start_time = time.time()
     
     with torch.no_grad():
         batch_idx = 0
         
-        pbar = tqdm(total=num_batches, desc="Processando batches")
+        pbar = tqdm(total=num_batches, desc="Processando", leave=False)
         
         while batch_idx < num_batches:
             batch_results = []
@@ -118,8 +125,8 @@ def inferir():
                 if current_batch >= num_batches:
                     break
                 
-                start_idx = current_batch * BATCH_SIZE
-                end_idx = min(start_idx + BATCH_SIZE, total_images)
+                start_idx = current_batch * batch_size
+                end_idx = min(start_idx + batch_size, total_images)
                 
                 if torch.cuda.is_available() and streams:
                     with torch.cuda.stream(streams[stream_id]):
@@ -169,15 +176,26 @@ def inferir():
     all_probs = torch.cat(all_probs).numpy()
     all_labels_combined = all_labels.numpy()
     
-    print(f"\n{'='*60}")
-    print(f"INFERÊNCIA CONCLUÍDA")
-    print(f"Tempo total: {inference_time:.2f} segundos")
-    print(f"Throughput: {total_images/inference_time:.2f} imagens/segundo")
-    print(f"{'='*60}\n")
+    # Calcula métricas
+    acc = accuracy_score(all_labels_combined, all_preds)
     
-    return total_images, inference_time, all_preds, all_labels_combined, all_probs
+    print(f"Tempo: {inference_time:.2f}s | Throughput: {total_images/inference_time:.2f} imgs/s | Acc: {acc*100:.2f}%")
+    
+    return {
+        'batch_size': batch_size,
+        'num_workers': num_workers,
+        'num_threads': num_threads,
+        'total_images': total_images,
+        'inference_time': inference_time,
+        'throughput': total_images/inference_time,
+        'accuracy': acc,
+        'predictions': all_preds,
+        'labels': all_labels_combined,
+        'probabilities': all_probs
+    }
 
 def calcular_metricas(all_labels, all_preds):
+    """Calcula todas as métricas de avaliação"""
     cm = confusion_matrix(all_labels, all_preds)
     acc = accuracy_score(all_labels, all_preds)
     precision = precision_score(all_labels, all_preds, average='macro', zero_division=0)
@@ -195,114 +213,219 @@ def calcular_metricas(all_labels, all_preds):
     
     return cm, acc, precision, recall, f1, specificity, fpr, fnr
 
-def salvar_graficos(cm, all_labels, all_preds):
-    os.makedirs("Codigo", exist_ok=True)
+def salvar_resultados(results_list):
+    """Salva resultados em CSV e JSON"""
+    os.makedirs("Codigo/results", exist_ok=True)
     
+    # Cria DataFrame com resultados
+    df_results = pd.DataFrame([
+        {
+            'batch_size': r['batch_size'],
+            'num_workers': r['num_workers'],
+            'num_threads': r['num_threads'],
+            'inference_time': r['inference_time'],
+            'throughput': r['throughput'],
+            'accuracy': r['accuracy']
+        }
+        for r in results_list
+    ])
+    
+    # Salva CSV
+    df_results.to_csv('Codigo/results/grid_search_results.csv', index=False)
+    print("\nResultados salvos em: Codigo/results/grid_search_results.csv")
+    
+    # Salva JSON
+    with open('Codigo/results/grid_search_results.json', 'w') as f:
+        json.dump([
+            {k: v for k, v in r.items() if k not in ['predictions', 'labels', 'probabilities']}
+            for r in results_list
+        ], f, indent=2)
+    
+    return df_results
+
+def plotar_analises(df_results):
+    """Cria gráficos de análise dos resultados"""
+    os.makedirs("Codigo/results", exist_ok=True)
+    
+    # 1. Throughput por Batch Size (agrupado por workers e threads)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    for num_workers in NUM_WORKERS_LIST:
+        for num_threads in NUM_THREADS_LIST:
+            data = df_results[
+                (df_results['num_workers'] == num_workers) & 
+                (df_results['num_threads'] == num_threads)
+            ]
+            axes[0].plot(data['batch_size'], data['throughput'], 
+                        marker='o', label=f'W={num_workers}, T={num_threads}')
+    
+    axes[0].set_xlabel('Batch Size', fontweight='bold')
+    axes[0].set_ylabel('Throughput (imgs/s)', fontweight='bold')
+    axes[0].set_title('Throughput vs Batch Size', fontweight='bold')
+    axes[0].set_xscale('log', base=2)
+    axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    axes[0].grid(True, alpha=0.3)
+    
+    # 2. Tempo de Inferência por Batch Size
+    for num_workers in NUM_WORKERS_LIST:
+        for num_threads in NUM_THREADS_LIST:
+            data = df_results[
+                (df_results['num_workers'] == num_workers) & 
+                (df_results['num_threads'] == num_threads)
+            ]
+            axes[1].plot(data['batch_size'], data['inference_time'], 
+                        marker='o', label=f'W={num_workers}, T={num_threads}')
+    
+    axes[1].set_xlabel('Batch Size', fontweight='bold')
+    axes[1].set_ylabel('Tempo de Inferência (s)', fontweight='bold')
+    axes[1].set_title('Tempo vs Batch Size', fontweight='bold')
+    axes[1].set_xscale('log', base=2)
+    axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('Codigo/results/throughput_analysis.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # 3. Heatmap de Throughput
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    axes = axes.flatten()
+    
+    for idx, num_threads in enumerate(NUM_THREADS_LIST):
+        pivot = df_results[df_results['num_threads'] == num_threads].pivot(
+            index='num_workers', 
+            columns='batch_size', 
+            values='throughput'
+        )
+        
+        sns.heatmap(pivot, annot=True, fmt='.1f', cmap='YlOrRd', 
+                   ax=axes[idx], cbar_kws={'label': 'Throughput (imgs/s)'})
+        axes[idx].set_title(f'Throughput - {num_threads} Thread(s)', fontweight='bold')
+        axes[idx].set_xlabel('Batch Size', fontweight='bold')
+        axes[idx].set_ylabel('Num Workers', fontweight='bold')
+    
+    plt.tight_layout()
+    plt.savefig('Codigo/results/heatmap_throughput.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print("Gráficos de análise salvos em: Codigo/results/")
+
+def encontrar_melhor_configuracao(df_results):
+    """Encontra e exibe a melhor configuração"""
+    print(f"\n{'='*70}")
+    print("MELHORES CONFIGURAÇÕES")
+    print(f"{'='*70}")
+    
+    # Melhor throughput
+    best_throughput = df_results.loc[df_results['throughput'].idxmax()]
+    print(f"\nMelhor Throughput: {best_throughput['throughput']:.2f} imgs/s")
+    print(f"  Batch Size: {int(best_throughput['batch_size'])}")
+    print(f"  Num Workers: {int(best_throughput['num_workers'])}")
+    print(f"  Num Threads: {int(best_throughput['num_threads'])}")
+    print(f"  Tempo: {best_throughput['inference_time']:.2f}s")
+    
+    # Menor tempo
+    best_time = df_results.loc[df_results['inference_time'].idxmin()]
+    print(f"\nMenor Tempo: {best_time['inference_time']:.2f}s")
+    print(f"  Batch Size: {int(best_time['batch_size'])}")
+    print(f"  Num Workers: {int(best_time['num_workers'])}")
+    print(f"  Num Threads: {int(best_time['num_threads'])}")
+    print(f"  Throughput: {best_time['throughput']:.2f} imgs/s")
+    
+    print(f"\n{'='*70}")
+
+def salvar_metricas_melhor_config(best_result):
+    """Salva métricas detalhadas da melhor configuração"""
+    os.makedirs("Codigo/results", exist_ok=True)
+    
+    all_labels = best_result['labels']
+    all_preds = best_result['predictions']
+    
+    cm, acc, precision, recall, f1, specificity, fpr, fnr = calcular_metricas(all_labels, all_preds)
+    
+    # Salva matriz de confusão
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=CLASSES, yticklabels=CLASSES,
                 cbar_kws={'label': 'Quantidade'})
     plt.xlabel("Predição", fontsize=12, fontweight='bold')
     plt.ylabel("Real", fontsize=12, fontweight='bold')
-    plt.title(f"Matriz de Confusão - {NUM_STREAMS} CUDA Streams", fontsize=14, fontweight='bold')
+    plt.title(f"Matriz de Confusão - Melhor Configuração\nBatch={best_result['batch_size']}, Workers={best_result['num_workers']}, Threads={best_result['num_threads']}", 
+              fontsize=12, fontweight='bold')
     plt.tight_layout()
-    plt.savefig("Codigo/confusion_matrix.png", dpi=300, bbox_inches='tight')
+    plt.savefig("Codigo/results/best_confusion_matrix.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    plt.figure(figsize=(10, 8))
-    cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    sns.heatmap(cm_normalized, annot=True, fmt=".2%", cmap="YlOrRd",
-                xticklabels=CLASSES, yticklabels=CLASSES,
-                cbar_kws={'label': 'Proporção'})
-    plt.xlabel("Predição", fontsize=12, fontweight='bold')
-    plt.ylabel("Real", fontsize=12, fontweight='bold')
-    plt.title("Matriz de Confusão Normalizada", fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    plt.savefig("Codigo/confusion_matrix_normalized.png", dpi=300, bbox_inches='tight')
-    plt.close()
+    # Salva relatório
+    with open('Codigo/results/best_config_metrics.txt', 'w') as f:
+        f.write(f"{'='*70}\n")
+        f.write(f"MÉTRICAS DA MELHOR CONFIGURAÇÃO\n")
+        f.write(f"{'='*70}\n\n")
+        f.write(f"Configuração:\n")
+        f.write(f"  Batch Size: {best_result['batch_size']}\n")
+        f.write(f"  Num Workers: {best_result['num_workers']}\n")
+        f.write(f"  Num Threads: {best_result['num_threads']}\n")
+        f.write(f"  Tempo: {best_result['inference_time']:.2f}s\n")
+        f.write(f"  Throughput: {best_result['throughput']:.2f} imgs/s\n\n")
+        f.write(f"Métricas:\n")
+        f.write(f"  Acurácia: {acc*100:.2f}%\n")
+        f.write(f"  Precisão: {precision*100:.2f}%\n")
+        f.write(f"  Recall: {recall*100:.2f}%\n")
+        f.write(f"  F1-Score: {f1*100:.2f}%\n")
+        f.write(f"  Especificidade: {specificity*100:.2f}%\n")
+        f.write(f"\n{classification_report(all_labels, all_preds, target_names=CLASSES, zero_division=0)}\n")
     
-    plt.figure(figsize=(12, 6))
-    metrics_per_class = []
-    for i in range(len(CLASSES)):
-        prec = precision_score(all_labels, all_preds, labels=[i], average='macro', zero_division=0)
-        rec = recall_score(all_labels, all_preds, labels=[i], average='macro', zero_division=0)
-        f1_c = f1_score(all_labels, all_preds, labels=[i], average='macro', zero_division=0)
-        metrics_per_class.append([prec, rec, f1_c])
-    
-    metrics_per_class = np.array(metrics_per_class)
-    x = np.arange(len(CLASSES))
-    width = 0.25
-    
-    plt.bar(x - width, metrics_per_class[:, 0], width, label='Precisão', color='steelblue', alpha=0.8)
-    plt.bar(x, metrics_per_class[:, 1], width, label='Recall', color='darkorange', alpha=0.8)
-    plt.bar(x + width, metrics_per_class[:, 2], width, label='F1-Score', color='green', alpha=0.8)
-    
-    plt.xlabel('Classes', fontsize=12, fontweight='bold')
-    plt.ylabel('Score', fontsize=12, fontweight='bold')
-    plt.title('Métricas por Classe', fontsize=14, fontweight='bold')
-    plt.xticks(x, CLASSES, rotation=15, ha='right')
-    plt.legend()
-    plt.ylim(0, 1.1)
-    plt.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.savefig("Codigo/metrics_per_class.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print("Gráficos salvos na pasta 'Codigo/'")
-
-def imprimir_relatorios(all_labels, all_preds, cm, acc, precision, recall, f1, specificity, fpr, fnr):    
-    print(f"{'='*60}")
-    print("RELATÓRIO DE MÉTRICAS")
-    print(f"{'='*60}")
-    
-    print(f"\nMÉTRICAS GERAIS:")
-    print(f"Acurácia (Accuracy):           {acc*100:.2f}%")
-    print(f"Precisão (Precision):          {precision*100:.2f}%")
-    print(f"Recall (Sensibilidade):        {recall*100:.2f}%")
-    print(f"F1-Score:                      {f1*100:.2f}%")
-    print(f"Especificidade:                {specificity*100:.2f}%")
-    print(f"Taxa Falsos Positivos (FPR):   {fpr*100:.2f}%")
-    print(f"Taxa Falsos Negativos (FNR):   {fnr*100:.2f}%")
-    
-    print(f"\nMÉTRICAS POR CLASSE:")
-    print("-" * 50)
-    for i, class_name in enumerate(CLASSES):
-        class_precision = precision_score(all_labels, all_preds, labels=[i], average='macro', zero_division=0)
-        class_recall = recall_score(all_labels, all_preds, labels=[i], average='macro', zero_division=0)
-        class_f1 = f1_score(all_labels, all_preds, labels=[i], average='macro', zero_division=0)
-        
-        print(f"{class_name:15} | Precisão: {class_precision*100:6.2f}% | Recall: {class_recall*100:6.2f}% | F1: {class_f1*100:6.2f}%")
-    
-    print(f"\n{'='*60}")
-    print("CLASSIFICATION REPORT (sklearn)")
-    print(f"{'='*60}")
-    print(classification_report(all_labels, all_preds, target_names=CLASSES, zero_division=0))
+    print("\nMétricas detalhadas salvas em: Codigo/results/best_config_metrics.txt")
 
 if __name__ == '__main__':
-    total_images, inference_time, all_preds, all_labels, all_probs = inferir()
+    print(f"\n{'='*70}")
+    print(f"GRID SEARCH - OTIMIZAÇÃO DE PARÂMETROS")
+    print(f"{'='*70}")
+    print(f"Batch Sizes: {BATCH_SIZES}")
+    print(f"Num Workers: {NUM_WORKERS_LIST}")
+    print(f"Num Threads: {NUM_THREADS_LIST}")
+    print(f"Total de combinações: {len(BATCH_SIZES) * len(NUM_WORKERS_LIST) * len(NUM_THREADS_LIST)}")
+    print(f"{'='*70}\n")
     
-    cm, acc, precision, recall, f1, specificity, fpr, fnr = calcular_metricas(all_labels, all_preds)
+    results_list = []
+    total_combinations = len(BATCH_SIZES) * len(NUM_WORKERS_LIST) * len(NUM_THREADS_LIST)
+    current = 0
     
-    imprimir_relatorios(all_labels, all_preds, cm, acc, precision, recall, f1, specificity, fpr, fnr)
+    for num_workers in NUM_WORKERS_LIST:
+        for num_threads in NUM_THREADS_LIST:
+            for batch_size in BATCH_SIZES:
+                current += 1
+                print(f"\n[{current}/{total_combinations}] Testando configuração...")
+                
+                try:
+                    result = inferir(batch_size, num_workers, num_threads)
+                    results_list.append(result)
+                except Exception as e:
+                    print(f"ERRO na configuração (batch={batch_size}, workers={num_workers}, threads={num_threads}): {e}")
+                    continue
     
-    salvar_graficos(cm, all_labels, all_preds)
+    print(f"\n{'='*70}")
+    print(f"GRID SEARCH CONCLUÍDO - {len(results_list)} configurações testadas")
+    print(f"{'='*70}\n")
     
-    correct_predictions = (all_preds == all_labels).sum()
-    incorrect_predictions = len(all_labels) - correct_predictions
+    # Salva e analisa resultados
+    df_results = salvar_resultados(results_list)
+    plotar_analises(df_results)
+    encontrar_melhor_configuracao(df_results)
     
-    print(f"\n{'='*60}")
-    print("ESTATÍSTICAS FINAIS")
-    print(f"{'='*60}")
-    print(f"Total de imagens:        {total_images}")
-    print(f"Predições corretas:      {correct_predictions} ({acc*100:.2f}%)")
-    print(f"Predições incorretas:    {incorrect_predictions} ({(1-acc)*100:.2f}%)")
-    print(f"Tempo total:             {inference_time:.2f}s")
-    print(f"Throughput:              {total_images/inference_time:.2f} imgs/s")
-    print(f"CUDA Streams utilizados: {NUM_STREAMS}")
-    print(f"Batch size:              {BATCH_SIZE}")
-    print(f"{'='*60}")
+    # Salva métricas detalhadas da melhor configuração
+    best_idx = df_results['throughput'].idxmax()
+    best_result = results_list[best_idx]
+    salvar_metricas_melhor_config(best_result)
     
-    if torch.cuda.is_available():
-        print(f"GPU utilizada:            {torch.cuda.get_device_name()}")
-        print(f"Memória GPU alocada:      {torch.cuda.memory_allocated()/1024**3:.2f} GB")
-    print(f"{'='*60}")
+    print(f"\n{'='*70}")
+    print("ANÁLISE COMPLETA!")
+    print(f"{'='*70}")
+    print("Arquivos gerados:")
+    print("  - Codigo/results/grid_search_results.csv")
+    print("  - Codigo/results/grid_search_results.json")
+    print("  - Codigo/results/throughput_analysis.png")
+    print("  - Codigo/results/heatmap_throughput.png")
+    print("  - Codigo/results/best_confusion_matrix.png")
+    print("  - Codigo/results/best_config_metrics.txt")
+    print(f"{'='*70}\n")
