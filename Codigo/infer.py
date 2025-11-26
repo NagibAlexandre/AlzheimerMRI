@@ -80,7 +80,7 @@ def load_complete_dataset(batch_size, num_workers):
     return all_images_tensor, all_labels_tensor, total_images
 
 def inferir(batch_size, num_workers, num_threads):
-    """Realiza inferência com parâmetros específicos"""
+    """Realiza inferência com parâmetros específicos - VERSÃO COM STREAMS PARALELAS"""
     
     # Configurar número de threads
     torch.set_num_threads(num_threads)
@@ -92,7 +92,7 @@ def inferir(batch_size, num_workers, num_threads):
     if not torch.cuda.is_available():
         print("AVISO: CUDA não disponível. Executando em CPU.")
     
-    # Carrega modelo (apenas uma vez seria mais eficiente, mas mantendo estrutura)
+    # Carrega modelo
     model = load_model(MODEL_PATH, DEVICE)
     
     # Carrega dataset
@@ -108,17 +108,17 @@ def inferir(batch_size, num_workers, num_threads):
     
     num_batches = (total_images + batch_size - 1) // batch_size
     
-    print(f"Iniciando inferência...")
+    print(f"Iniciando inferência com {NUM_STREAMS} streams paralelas...")
     start_time = time.time()
     
     with torch.no_grad():
         batch_idx = 0
-        
         pbar = tqdm(total=num_batches, desc="Processando", leave=False)
         
         while batch_idx < num_batches:
-            batch_results = []
+            batch_outputs = []  # Armazena outputs na GPU
             
+            # FASE 1: AGENDAR OPERAÇÕES EM PARALELO (não bloqueia)
             for stream_id in range(NUM_STREAMS):
                 current_batch = batch_idx + stream_id
                 
@@ -129,40 +129,44 @@ def inferir(batch_size, num_workers, num_threads):
                 end_idx = min(start_idx + batch_size, total_images)
                 
                 if torch.cuda.is_available() and streams:
+                    # Cada stream executa INDEPENDENTEMENTE
                     with torch.cuda.stream(streams[stream_id]):
                         batch_images = all_images[start_idx:end_idx].to(
                             DEVICE, 
-                            non_blocking=True
+                            non_blocking=True  # Crucial para paralelismo!
                         )
                         
                         outputs = model(batch_images)
                         probabilities = torch.softmax(outputs, dim=1)
                         _, predictions = outputs.max(1)
                         
-                        preds_cpu = predictions.cpu()
-                        probs_cpu = probabilities.cpu()
-                        
-                        batch_results.append({
-                            'preds': preds_cpu,
-                            'probs': probs_cpu
+                        # Mantém na GPU - NÃO transfere para CPU ainda
+                        batch_outputs.append({
+                            'preds': predictions,
+                            'probs': probabilities,
+                            'stream': streams[stream_id]
                         })
                 else:
+                    # Fallback CPU
                     batch_images = all_images[start_idx:end_idx].to(DEVICE)
                     outputs = model(batch_images)
                     probabilities = torch.softmax(outputs, dim=1)
                     _, predictions = outputs.max(1)
                     
-                    batch_results.append({
-                        'preds': predictions.cpu(),
-                        'probs': probabilities.cpu()
+                    batch_outputs.append({
+                        'preds': predictions,
+                        'probs': probabilities,
+                        'stream': None
                     })
             
+            # FASE 2: SINCRONIZAR (aguarda TODAS as streams terminarem)
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             
-            for result in batch_results:
-                all_preds.append(result['preds'])
-                all_probs.append(result['probs'])
+            # FASE 3: TRANSFERIR RESULTADOS PARA CPU
+            for output_dict in batch_outputs:
+                all_preds.append(output_dict['preds'].cpu())
+                all_probs.append(output_dict['probs'].cpu())
             
             batch_idx += NUM_STREAMS
             pbar.update(min(NUM_STREAMS, num_batches - batch_idx + NUM_STREAMS))
@@ -379,11 +383,12 @@ def salvar_metricas_melhor_config(best_result):
 
 if __name__ == '__main__':
     print(f"\n{'='*70}")
-    print(f"GRID SEARCH - OTIMIZAÇÃO DE PARÂMETROS")
+    print(f"GRID SEARCH - OTIMIZAÇÃO DE PARÂMETROS (STREAMS PARALELAS)")
     print(f"{'='*70}")
     print(f"Batch Sizes: {BATCH_SIZES}")
     print(f"Num Workers: {NUM_WORKERS_LIST}")
     print(f"Num Threads: {NUM_THREADS_LIST}")
+    print(f"Num Streams: {NUM_STREAMS}")
     print(f"Total de combinações: {len(BATCH_SIZES) * len(NUM_WORKERS_LIST) * len(NUM_THREADS_LIST)}")
     print(f"{'='*70}\n")
     
