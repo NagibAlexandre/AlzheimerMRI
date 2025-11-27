@@ -894,8 +894,7 @@ class SideBar(QFrame):
         self.menuLayout.setSpacing(0)
         
         menuStructure = {
-            "CLASSIFICAÇÃO": ["CNN"],
-            "SOBRE": ["Sobre o Projeto"]
+            "CLASSIFICAÇÃO": ["CNN"]
         }
         
         self.menuButtons = []
@@ -1036,11 +1035,6 @@ class Content(QFrame):
         if pageName == "CNN":
             models = ModelsWidget()
             self.contentLayout.addWidget(models)
-            self.contentLayout.addStretch()
-
-        elif pageName == "Sobre o Projeto":
-            results = ModelsWidget()
-            self.contentLayout.addWidget(results)
             self.contentLayout.addStretch()
 
         else:
