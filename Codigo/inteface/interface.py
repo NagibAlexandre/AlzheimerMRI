@@ -529,11 +529,9 @@ class ModelsWidget(QFrame):
         self.clearResults()
     
     def clearResults(self):
-        """Clear internal results data"""
         pass
     
     def clearResultsDisplay(self):
-        """Clear results display"""
         self.results_text.setText("Adicione uma imagem e clique em classificar para ver o resultado")
     
     def create_results_section(self):
