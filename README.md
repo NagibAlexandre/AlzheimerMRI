@@ -17,6 +17,10 @@ O projeto utiliza uma arquitetura ResNet18 com transfer learning, implementa uma
 * Henrique Cota de Freitas
 * João Paulo Coelho Furtado
 
+## PITCH
+
+https://www.youtube.com/watch?v=qCqW1E061YA
+
 ## Estrutura do Projeto
 
 ```
