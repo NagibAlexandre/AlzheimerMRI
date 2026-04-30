@@ -150,6 +150,7 @@ class CnnClient(fl.client.NumPyClient):
 
     def final_evaluation(self):
         """ Avaliação final com barra de progresso e métricas """
+        print("\n[CLIENTE] Executando avaliação final...")
         model.eval()
         all_preds, all_labels = [], []
         with torch.no_grad():
@@ -178,7 +179,9 @@ class CnnClient(fl.client.NumPyClient):
         fnr = np.mean(fn / (fn + tp + 1e-10))
 
         # --- Relatório ---
-        print("\n--- RELATÓRIO FINAL ---")
+        print("\n==============================")
+        print("--- RELATÓRIO FINAL ---")
+        print("==============================")
         print(f"Acurácia (Accuracy): {acc*100:.2f}%")
         print(f"Precisão (Precision): {precision*100:.2f}%")
         print(f"Recall / Sensibilidade: {recall*100:.2f}%")
@@ -187,17 +190,31 @@ class CnnClient(fl.client.NumPyClient):
         print(f"Taxa de Falsos Positivos (FPR): {fpr*100:.2f}%")
         print(f"Taxa de Falsos Negativos (FNR): {fnr*100:.2f}%")
 
-        # --- Matriz de Confusão ---
+        # --- Salvar Matriz de Confusão em Arquivo ---
         plt.figure(figsize=(10,8))
         sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                     xticklabels=CLASSES, yticklabels=CLASSES)
         plt.xlabel("Predicted")
         plt.ylabel("Actual")
-        plt.title("Confusion Matrix")
+        plt.title(f"Confusion Matrix (Accuracy: {acc*100:.2f}%)")
+        plt.tight_layout()
+        
+        # Criar pasta de resultados se não existir
+        os.makedirs("Codigo/resultados", exist_ok=True)
+        cm_path = "Codigo/resultados/confusion_matrix.png"
+        plt.savefig(cm_path, dpi=300, bbox_inches='tight')
+        print(f"\n✓ Matriz de confusão salva em: {cm_path}")
         plt.show()
 
 
 if __name__ == "__main__":
+    print("\n[CLIENTE] Iniciando cliente Flower...")
     client = CnnClient()
-    fl.client.start_numpy_client(server_address="localhost:8080", client=client)
-    client.final_evaluation()
+    try:
+        fl.client.start_numpy_client(server_address="localhost:8080", client=client)
+    except Exception as e:
+        print(f"\n[AVISO] Federated Learning encerrado: {e}")
+    finally:
+        print("\n[CLIENTE] Federated Learning finalizado. Gerando avaliação final...")
+        client.final_evaluation()
+        print("\n[CLIENTE] Processo completado!")

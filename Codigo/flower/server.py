@@ -2,6 +2,9 @@ from unittest import result
 import flwr as fl
 import time
 import numpy as np
+import json
+import os
+import matplotlib.pyplot as plt
 
 # --- Estrutura para salvar métricas globais ---
 global_metrics = {
@@ -68,6 +71,9 @@ if __name__ == "__main__":
 
     total_time = time.time() - start_time
 
+    # --- Criar pasta de resultados ---
+    os.makedirs("Codigo/resultados", exist_ok=True)
+
     # --- Relatório Final de Desempenho Distribuído ---
     print("\n==============================")
     print("RELATÓRIO DE COMPUTAÇÃO DISTRIBUÍDA")
@@ -77,3 +83,65 @@ if __name__ == "__main__":
     print(f"Acurácia Global Média: {np.mean(global_metrics['round_accuracies'])*100:.2f}%")
     print(f"Acurácia Local Média (clientes): {np.mean(global_metrics['client_train_acc'])*100:.2f}%")
     print(f"Loss Global Médio: {np.mean(global_metrics['round_losses']):.4f}")
+    
+    # --- Salvar métricas em JSON ---
+    metrics_data = {
+        "tempo_total": total_time,
+        "tempo_medio_rodada": float(np.mean(global_metrics['round_times'])),
+        "acuracia_global_media": float(np.mean(global_metrics['round_accuracies'])),
+        "acuracia_local_media": float(np.mean(global_metrics['client_train_acc'])),
+        "loss_global_medio": float(np.mean(global_metrics['round_losses'])),
+        "detalhes": {
+            "tempos_rodadas": global_metrics['round_times'],
+            "acuracias_globais": [float(x) for x in global_metrics['round_accuracies']],
+            "losses_globais": [float(x) for x in global_metrics['round_losses']],
+            "tempos_clientes": global_metrics['client_exec_times'],
+            "acuracias_locais": [float(x) for x in global_metrics['client_train_acc']]
+        }
+    }
+    
+    metrics_path = "Codigo/resultados/metricas_fedlearning.json"
+    with open(metrics_path, 'w') as f:
+        json.dump(metrics_data, f, indent=4)
+    print(f"\n✓ Métricas salvas em: {metrics_path}")
+    
+    # --- Gerar gráficos ---
+    if len(global_metrics['round_accuracies']) > 0:
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        
+        # Gráfico 1: Acurácia Global por Rodada
+        axes[0, 0].plot(global_metrics['round_accuracies'], marker='o', linestyle='-', color='blue')
+        axes[0, 0].set_xlabel("Rodada")
+        axes[0, 0].set_ylabel("Acurácia")
+        axes[0, 0].set_title("Acurácia Global Por Rodada")
+        axes[0, 0].grid(True)
+        
+        # Gráfico 2: Loss Global por Rodada
+        axes[0, 1].plot(global_metrics['round_losses'], marker='o', linestyle='-', color='red')
+        axes[0, 1].set_xlabel("Rodada")
+        axes[0, 1].set_ylabel("Loss")
+        axes[0, 1].set_title("Loss Global Por Rodada")
+        axes[0, 1].grid(True)
+        
+        # Gráfico 3: Tempo de Execução por Rodada
+        axes[1, 0].plot(global_metrics['round_times'], marker='o', linestyle='-', color='green')
+        axes[1, 0].set_xlabel("Rodada")
+        axes[1, 0].set_ylabel("Tempo (segundos)")
+        axes[1, 0].set_title("Tempo de Execução Por Rodada")
+        axes[1, 0].grid(True)
+        
+        # Gráfico 4: Acurácias Local vs Global
+        if len(global_metrics['client_train_acc']) > 0:
+            axes[1, 1].plot(global_metrics['round_accuracies'], marker='o', label='Global', linestyle='-', color='blue')
+            axes[1, 1].plot(global_metrics['client_train_acc'], marker='s', label='Local Média', linestyle='--', color='orange')
+            axes[1, 1].set_xlabel("Rodada")
+            axes[1, 1].set_ylabel("Acurácia")
+            axes[1, 1].set_title("Comparação: Acurácia Global vs Local")
+            axes[1, 1].legend()
+            axes[1, 1].grid(True)
+        
+        plt.tight_layout()
+        graphs_path = "Codigo/resultados/metricas_graficos.png"
+        plt.savefig(graphs_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Gráficos salvos em: {graphs_path}")
+        plt.show()
