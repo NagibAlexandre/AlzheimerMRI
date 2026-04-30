@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 import torch
@@ -18,7 +19,10 @@ from tqdm import tqdm
 import flwr as fl
 
 # --- Config ---
-DATA_PROCESSED = "Codigo/dataset/Processed/"
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_PROCESSED = BASE_DIR / "dataset" / "Processed"
+RESULTS_DIR = BASE_DIR / "resultados"
+MODEL_PATH = BASE_DIR / "model.pth"
 IMG_SIZE = 224
 BATCH = 32
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,9 +45,9 @@ transform_test = transforms.Compose([
 ])
 
 # --- Datasets ---
-train_ds = datasets.ImageFolder(os.path.join(DATA_PROCESSED,"train"), transform_train)
-val_ds   = datasets.ImageFolder(os.path.join(DATA_PROCESSED,"val"), transform_test)
-test_ds  = datasets.ImageFolder(os.path.join(DATA_PROCESSED,"test"), transform_test)
+train_ds = datasets.ImageFolder(os.path.join(DATA_PROCESSED, "train"), transform_train)
+val_ds   = datasets.ImageFolder(os.path.join(DATA_PROCESSED, "val"), transform_test)
+test_ds  = datasets.ImageFolder(os.path.join(DATA_PROCESSED, "test"), transform_test)
 
 train_loader = DataLoader(train_ds, batch_size=BATCH, shuffle=True, num_workers=3)
 val_loader   = DataLoader(val_ds, batch_size=BATCH, shuffle=False, num_workers=3)
@@ -127,7 +131,7 @@ class CnnClient(fl.client.NumPyClient):
         print(f"Tempo de execução total: {exec_time:.2f} segundos")
         print(f"Acurácia média de treino: {avg_train_acc*100:.2f}%")
 
-        torch.save(model.state_dict(), "Codigo/model.pth")
+        torch.save(model.state_dict(), MODEL_PATH)
         return self.get_parameters(), len(train_loader.dataset), {"train_acc": avg_train_acc, "exec_time": exec_time}
 
     def evaluate(self, parameters, config=None):
@@ -200,8 +204,8 @@ class CnnClient(fl.client.NumPyClient):
         plt.tight_layout()
         
         # Criar pasta de resultados se não existir
-        os.makedirs("Codigo/resultados", exist_ok=True)
-        cm_path = "Codigo/resultados/confusion_matrix.png"
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        cm_path = RESULTS_DIR / "confusion_matrix.png"
         plt.savefig(cm_path, dpi=300, bbox_inches='tight')
         print(f"\n✓ Matriz de confusão salva em: {cm_path}")
         plt.show()
