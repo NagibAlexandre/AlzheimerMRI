@@ -1,7 +1,14 @@
 import os
+import sys
 import time
+import json
+import argparse
 from pathlib import Path
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+import matplotlib
+if "--run" in sys.argv:
+    matplotlib.use('Agg')
 
 import torch
 import torch.nn as nn
@@ -152,8 +159,11 @@ class CnnClient(fl.client.NumPyClient):
         print(f"[Val] Loss(distributed): {avg_loss:.4f} | Accuracy(distributed): {acc*100:.2f}%")
         return float(1 - acc), len(val_loader.dataset), {"loss": avg_loss, "acc": acc}
 
-    def final_evaluation(self):
-        """ Avaliação final com barra de progresso e métricas """
+    def final_evaluation(self, run_id=None, client_id=None, show_plots=True):
+        """ Avaliação final com barra de progresso e métricas.
+
+        Returns um dicionário com todas as métricas calculadas.
+        """
         print("\n[CLIENTE] Executando avaliação final...")
         model.eval()
         all_preds, all_labels = [], []
@@ -182,6 +192,16 @@ class CnnClient(fl.client.NumPyClient):
         fpr = np.mean(fp / (fp + tn + 1e-10))
         fnr = np.mean(fn / (fn + tp + 1e-10))
 
+        metrics = {
+            "accuracy":    float(acc),
+            "precision":   float(precision),
+            "recall":      float(recall),
+            "f1":          float(f1),
+            "specificity": float(specificity),
+            "fpr":         float(fpr),
+            "fnr":         float(fnr),
+        }
+
         # --- Relatório ---
         print("\n==============================")
         print("--- RELATÓRIO FINAL ---")
@@ -194,31 +214,51 @@ class CnnClient(fl.client.NumPyClient):
         print(f"Taxa de Falsos Positivos (FPR): {fpr*100:.2f}%")
         print(f"Taxa de Falsos Negativos (FNR): {fnr*100:.2f}%")
 
-        # --- Salvar Matriz de Confusão em Arquivo ---
-        plt.figure(figsize=(10,8))
+        # --- Salvar Matriz de Confusão ---
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        cm_suffix = f"_run{run_id}_client{client_id}" if run_id is not None else ""
+        cm_path = RESULTS_DIR / f"confusion_matrix{cm_suffix}.png"
+
+        plt.figure(figsize=(10, 8))
         sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                     xticklabels=CLASSES, yticklabels=CLASSES)
         plt.xlabel("Predicted")
         plt.ylabel("Actual")
         plt.title(f"Confusion Matrix (Accuracy: {acc*100:.2f}%)")
         plt.tight_layout()
-        
-        # Criar pasta de resultados se não existir
-        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        cm_path = RESULTS_DIR / "confusion_matrix.png"
         plt.savefig(cm_path, dpi=300, bbox_inches='tight')
         print(f"\n✓ Matriz de confusão salva em: {cm_path}")
-        plt.show()
+        if show_plots:
+            plt.show()
+        else:
+            plt.close()
+
+        # --- Salvar métricas em JSON quando executado em modo automático ---
+        if run_id is not None:
+            metrics_path = RESULTS_DIR / f"metricas_cliente_{client_id}_run_{run_id}.json"
+            with open(metrics_path, 'w') as f:
+                json.dump(metrics, f, indent=4)
+            print(f"✓ Métricas salvas em: {metrics_path}")
+
+        return metrics
 
 
 if __name__ == "__main__":
-    print("\n[CLIENTE] Iniciando cliente Flower...")
+    parser = argparse.ArgumentParser(description="Cliente Flower para Federated Learning")
+    parser.add_argument("--run", type=int, default=None,
+                        help="ID da run (usado para salvar métricas numeradas)")
+    parser.add_argument("--client-id", type=int, default=0,
+                        help="ID do cliente (0, 1, 2, ...)")
+    args = parser.parse_args()
+
+    print(f"\n[CLIENTE {args.client_id}] Iniciando cliente Flower...")
     client = CnnClient()
+    show = args.run is None  # Mostrar plots apenas em modo interativo
     try:
         fl.client.start_numpy_client(server_address="localhost:8080", client=client)
     except Exception as e:
         print(f"\n[AVISO] Federated Learning encerrado: {e}")
     finally:
         print("\n[CLIENTE] Federated Learning finalizado. Gerando avaliação final...")
-        client.final_evaluation()
+        client.final_evaluation(run_id=args.run, client_id=args.client_id, show_plots=show)
         print("\n[CLIENTE] Processo completado!")
