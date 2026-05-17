@@ -11,16 +11,16 @@ RESULTS_DIR = SCRIPT_DIR.parent / "resultados"
 LOGS_DIR    = RESULTS_DIR / "logs"
 
 N_CLIENTS            = 3
-SERVER_READY_TIMEOUT = 120   # segundos aguardando servidor aceitar conexões
-RUN_TIMEOUT          = 1200  # 20 min por run (cada run ~10 min)
-BETWEEN_RUNS_DELAY   = 20    # segundos entre runs para liberar porta
+SERVER_READY_TIMEOUT = 120   # seconds waiting for server to accept connections
+RUN_TIMEOUT          = 7200  # 2 hours per run
+BETWEEN_RUNS_DELAY   = 20    # seconds between runs to free the port
 
 
 
-# Utilitários de rede
+# Network utilities
 def wait_for_server(host="localhost", port=8080, timeout=SERVER_READY_TIMEOUT):
-    """Bloqueia até o servidor aceitar TCP na porta, ou até o timeout."""
-    print(f"  Aguardando servidor em {host}:{port}", end="", flush=True)
+    """Block until the server accepts TCP on the port, or until timeout."""
+    print(f"  Waiting for server at {host}:{port}", end="", flush=True)
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -35,7 +35,7 @@ def wait_for_server(host="localhost", port=8080, timeout=SERVER_READY_TIMEOUT):
 
 
 def wait_for_port_free(host="localhost", port=8080, timeout=60):
-    """Aguarda até a porta ser liberada (útil entre runs)."""
+    """Wait until the port is free (useful between runs)."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -68,8 +68,8 @@ def run_single(run_id, n_clients=N_CLIENTS):
     server_log_path = LOGS_DIR / f"run_{run_id}_server.log"
     server_log = open(server_log_path, "w", encoding="utf-8")
 
-    # --- Iniciar servidor ---
-    print(f"  [run {run_id}] Iniciando servidor...")
+    # --- Start server ---
+    print(f"  [run {run_id}] Starting server...")
     server_proc = subprocess.Popen(
         [sys.executable, "server.py", "--run", str(run_id)],
         cwd=SCRIPT_DIR,
@@ -79,7 +79,7 @@ def run_single(run_id, n_clients=N_CLIENTS):
     )
 
     if not wait_for_server():
-        print(f"  [run {run_id}] ERRO: Servidor não iniciou a tempo.")
+        print(f"  [run {run_id}] ERROR: Server did not start in time.")
         server_proc.kill()
         server_log.close()
         return None
@@ -87,7 +87,7 @@ def run_single(run_id, n_clients=N_CLIENTS):
 
     client_procs = []
     client_logs  = []
-    print(f"  [run {run_id}] Iniciando {n_clients} clientes...")
+    print(f"  [run {run_id}] Starting {n_clients} clients...")
     for cid in range(n_clients):
         log_path = LOGS_DIR / f"run_{run_id}_client_{cid}.log"
         log = open(log_path, "w", encoding="utf-8")
@@ -102,7 +102,7 @@ def run_single(run_id, n_clients=N_CLIENTS):
         )
         client_procs.append(proc)
         client_logs.append(log)
-        time.sleep(0.5)  # evitar condição de corrida na inicialização
+        time.sleep(0.5)  # avoid starting all clients at the exact same moment
 
 
     deadline    = time.time() + RUN_TIMEOUT
@@ -112,10 +112,10 @@ def run_single(run_id, n_clients=N_CLIENTS):
         try:
             proc.wait(timeout=remaining)
             rc = proc.returncode
-            status = "OK" if rc == 0 else f"código {rc}"
-            print(f"  [run {run_id}] Cliente {cid} finalizado ({status})")
+            status = "OK" if rc == 0 else f"code {rc}"
+            print(f"  [run {run_id}] Client {cid} finished ({status})")
         except subprocess.TimeoutExpired:
-            print(f"  [run {run_id}] TIMEOUT: Cliente {cid} excedeu {RUN_TIMEOUT}s.")
+            print(f"  [run {run_id}] TIMEOUT: Client {cid} exceeded {RUN_TIMEOUT}s.")
             timed_out = True
             break
 
@@ -129,9 +129,9 @@ def run_single(run_id, n_clients=N_CLIENTS):
 
     try:
         server_proc.wait(timeout=60)
-        print(f"  [run {run_id}] Servidor finalizado (código: {server_proc.returncode})")
+        print(f"  [run {run_id}] Server finished (code: {server_proc.returncode})")
     except subprocess.TimeoutExpired:
-        print(f"  [run {run_id}] AVISO: Servidor não encerrou em 60s, forçando.")
+        print(f"  [run {run_id}] WARNING: Server did not stop in 60s, forcing.")
         server_proc.kill()
 
     for log in client_logs:
@@ -139,7 +139,7 @@ def run_single(run_id, n_clients=N_CLIENTS):
     server_log.close()
 
     run_time = time.time() - run_start
-    print(f"  [run {run_id}] Tempo total da run: {run_time:.1f}s ({run_time/60:.1f} min)")
+    print(f"  [run {run_id}] Total run time: {run_time:.1f}s ({run_time/60:.1f} min)")
 
     
     metric_keys   = ["accuracy", "precision", "recall", "f1", "specificity", "fpr", "fnr"]
@@ -150,10 +150,10 @@ def run_single(run_id, n_clients=N_CLIENTS):
             with open(mfile) as f:
                 client_metrics.append(json.load(f))
         else:
-            print(f"  [run {run_id}] AVISO: {mfile.name} não encontrado.")
+            print(f"  [run {run_id}] WARNING: {mfile.name} not found.")
 
     if not client_metrics:
-        print(f"  [run {run_id}] ERRO: Nenhuma métrica de cliente encontrada.")
+        print(f"  [run {run_id}] ERROR: No client metrics found.")
         return None
 
     aggregated = {}
@@ -178,13 +178,13 @@ def run_single(run_id, n_clients=N_CLIENTS):
     run_file = RESULTS_DIR / f"metricas_run_{run_id}.json"
     with open(run_file, "w") as f:
         json.dump(run_result, f, indent=4)
-    print(f"  [run {run_id}] ✓ Resultado agregado em: {run_file}")
+    print(f"  [run {run_id}] ✓ Aggregated result saved to: {run_file}")
 
     return run_result
 
 
 
-# Orquestrador principal
+# main Orchestrator
 def print_summary(all_results):
     metric_keys  = ["accuracy", "precision", "recall", "f1", "specificity"]
     metric_labels = {
@@ -195,13 +195,13 @@ def print_summary(all_results):
         "specificity": "Specificity",
     }
     print(f"\n{'='*60}")
-    print("  RESUMO FINAL")
+    print("  FINAL SUMMARY")
     print(f"{'='*60}")
-    print(f"  Runs completadas: {len(all_results)}")
+    print(f"  Runs completed: {len(all_results)}")
     total_time = sum(r["run_time_seconds"] for r in all_results)
-    print(f"  Tempo total acumulado: {total_time/60:.1f} min")
+    print(f"  Total accumulated time: {total_time/60:.1f} min")
 
-    print(f"\n  {'Métrica':<20} {'Média':>9}  (n={len(all_results)} runs)")
+    print(f"\n  {'Metric':<20} {'Mean':>9}  (n={len(all_results)} runs)")
     print(f"  {'-'*33}")
     for key in metric_keys:
         vals = [r["final_metrics"][key] for r in all_results
@@ -211,25 +211,25 @@ def print_summary(all_results):
             label = metric_labels.get(key, key)
             print(f"  {label:<20} {mean*100:>8.2f}%")
 
-    print(f"\n  Execute 'python analyze_results.py' para análise estatística completa.")
+    print(f"\n  Run 'python analyze_results.py' for full statistical analysis.")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Orquestrador de múltiplas runs de Federated Learning"
+        description="Orchestrator for multiple Federated Learning runs"
     )
     parser.add_argument("--runs",       type=int, default=5,
-                        help="Número de runs (padrão: 5)")
+                        help="Number of runs (default: 5)")
     parser.add_argument("--clients",    type=int, default=N_CLIENTS,
-                        help="Número de clientes por run (padrão: 3)")
+                        help="Number of clients per run (default: 3)")
     parser.add_argument("--start-from", type=int, default=1,
-                        help="ID da primeira run (padrão: 1, útil para retomar)")
+                        help="First run ID (default: 1, useful to resume)")
     args = parser.parse_args()
 
-    print(f"\nFederated Learning — Experimento Automatizado")
-    print(f"  {args.runs} runs × {args.clients} clientes")
-    print(f"  Resultados em: {RESULTS_DIR}")
-    print(f"  Logs em: {LOGS_DIR}")
+    print(f"\nFederated Learning — Automated Experiment")
+    print(f"  {args.runs} runs × {args.clients} clients")
+    print(f"  Results in: {RESULTS_DIR}")
+    print(f"  Logs in: {LOGS_DIR}")
 
     all_results  = []
     failed_runs  = []
@@ -239,10 +239,10 @@ def main():
         run_id = args.start_from + i
 
         if i > 0:
-            print(f"\nAguardando {BETWEEN_RUNS_DELAY}s + liberação da porta 8080...")
+            print(f"\nWaiting {BETWEEN_RUNS_DELAY}s + port 8080 to be freed...")
             time.sleep(BETWEEN_RUNS_DELAY)
             if not wait_for_port_free(timeout=60):
-                print("AVISO: Porta 8080 pode ainda estar em uso, tentando assim mesmo.")
+                print("WARNING: Port 8080 may still be in use, proceeding anyway.")
 
         result = run_single(run_id, n_clients=args.clients)
         if result is not None:
@@ -251,13 +251,13 @@ def main():
             failed_runs.append(run_id)
 
     if failed_runs:
-        print(f"\nAVISO: Runs com falha: {failed_runs}")
+        print(f"\nWARNING: Failed runs: {failed_runs}")
 
     if all_results:
         print_summary(all_results)
 
     total_elapsed = time.time() - experiment_start
-    print(f"\n  Experimento concluído em {total_elapsed/60:.1f} min total.")
+    print(f"\n  Experiment completed in {total_elapsed/60:.1f} min total.")
 
 
 if __name__ == "__main__":

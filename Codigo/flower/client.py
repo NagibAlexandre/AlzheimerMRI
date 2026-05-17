@@ -60,7 +60,7 @@ train_loader = DataLoader(train_ds, batch_size=BATCH, shuffle=True, num_workers=
 val_loader   = DataLoader(val_ds, batch_size=BATCH, shuffle=False, num_workers=3)
 test_loader  = DataLoader(test_ds, batch_size=BATCH, shuffle=False, num_workers=3)
 
-# --- Modelo ---
+# --- Model ---
 model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
 for param in model.parameters():
     param.requires_grad = False
@@ -83,11 +83,11 @@ class CnnClient(fl.client.NumPyClient):
         model.load_state_dict(state_dict, strict=True)
 
     def fit(self, parameters, config=None):
-        start_time = time.time()  # tempo de execução começa aqui
+        start_time = time.time()  # execution timer starts here
         self.set_parameters(parameters)
         history_acc = []
 
-        # --- Fase 1: Treinar apenas FC ---
+        # --- Phase 1: Train only FC ---
         for epoch in range(WARMUP_EPOCHS):
             model.train()
             total, correct = 0, 0
@@ -106,7 +106,7 @@ class CnnClient(fl.client.NumPyClient):
                 loop.set_postfix(loss=loss.item(), acc=correct/total)
             history_acc.append(correct/total)
 
-        # --- Fase 2: Fine-tuning layer3+layer4 ---
+        # --- Phase 2: Fine-tuning layer3+layer4 ---
         for name, param in model.named_parameters():
             if "layer3" in name or "layer4" in name or "fc" in name:
                 param.requires_grad = True
@@ -134,9 +134,9 @@ class CnnClient(fl.client.NumPyClient):
         exec_time = end_time - start_time
         avg_train_acc = np.mean(history_acc)
 
-        print("\n--- RELATÓRIO LOCAL (Cliente) ---")
-        print(f"Tempo de execução total: {exec_time:.2f} segundos")
-        print(f"Acurácia média de treino: {avg_train_acc*100:.2f}%")
+        print("\n--- LOCAL REPORT (Client) ---")
+        print(f"Total execution time: {exec_time:.2f} seconds")
+        print(f"Average training accuracy: {avg_train_acc*100:.2f}%")
 
         torch.save(model.state_dict(), MODEL_PATH)
         return self.get_parameters(), len(train_loader.dataset), {"train_acc": avg_train_acc, "exec_time": exec_time}
@@ -160,11 +160,11 @@ class CnnClient(fl.client.NumPyClient):
         return float(1 - acc), len(val_loader.dataset), {"loss": avg_loss, "acc": acc}
 
     def final_evaluation(self, run_id=None, client_id=None, show_plots=True):
-        """ Avaliação final com barra de progresso e métricas.
+        """ Final evaluation with progress bar and computed metrics.
 
-        Returns um dicionário com todas as métricas calculadas.
+        Returns a dictionary with all computed metrics.
         """
-        print("\n[CLIENTE] Executando avaliação final...")
+        print("\n[CLIENT] Running final evaluation...")
         model.eval()
         all_preds, all_labels = [], []
         with torch.no_grad():
@@ -176,15 +176,15 @@ class CnnClient(fl.client.NumPyClient):
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
-        # --- MÉTRICAS ---
+        # --- METRICS ---
         cm = confusion_matrix(all_labels, all_preds)
         acc = accuracy_score(all_labels, all_preds)
         precision = precision_score(all_labels, all_preds, average='macro', zero_division=0)
         recall = recall_score(all_labels, all_preds, average='macro', zero_division=0)
         f1 = f1_score(all_labels, all_preds, average='macro', zero_division=0)
 
-        # Especificidade e taxas
-        tn = np.diag(cm).sum() - np.diag(cm)  # TN por classe
+        # Calculating specificity, FPR, and FNR from confusion matrix
+        tn = np.diag(cm).sum() - np.diag(cm)  # TN by class
         fp = cm.sum(axis=0) - np.diag(cm)
         fn = cm.sum(axis=1) - np.diag(cm)
         tp = np.diag(cm)
@@ -202,19 +202,19 @@ class CnnClient(fl.client.NumPyClient):
             "fnr":         float(fnr),
         }
 
-        # --- Relatório ---
+        # --- Report ---
         print("\n==============================")
-        print("--- RELATÓRIO FINAL ---")
+        print("--- FINAL REPORT ---")
         print("==============================")
-        print(f"Acurácia (Accuracy): {acc*100:.2f}%")
-        print(f"Precisão (Precision): {precision*100:.2f}%")
-        print(f"Recall / Sensibilidade: {recall*100:.2f}%")
+        print(f"Accuracy: {acc*100:.2f}%")
+        print(f"Precision: {precision*100:.2f}%")
+        print(f"Recall / Sensitivity: {recall*100:.2f}%")
         print(f"F1-Score: {f1*100:.2f}%")
-        print(f"Especificidade: {specificity*100:.2f}%")
-        print(f"Taxa de Falsos Positivos (FPR): {fpr*100:.2f}%")
-        print(f"Taxa de Falsos Negativos (FNR): {fnr*100:.2f}%")
+        print(f"Specificity: {specificity*100:.2f}%")
+        print(f"False Positive Rate (FPR): {fpr*100:.2f}%")
+        print(f"False Negative Rate (FNR): {fnr*100:.2f}%")
 
-        # --- Salvar Matriz de Confusão ---
+        # --- Save Confusion Matrix ---
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         cm_suffix = f"_run{run_id}_client{client_id}" if run_id is not None else ""
         cm_path = RESULTS_DIR / f"confusion_matrix{cm_suffix}.png"
@@ -227,38 +227,38 @@ class CnnClient(fl.client.NumPyClient):
         plt.title(f"Confusion Matrix (Accuracy: {acc*100:.2f}%)")
         plt.tight_layout()
         plt.savefig(cm_path, dpi=300, bbox_inches='tight')
-        print(f"\n✓ Matriz de confusão salva em: {cm_path}")
+        print(f"\n✓ Confusion matrix saved to: {cm_path}")
         if show_plots:
             plt.show()
         else:
             plt.close()
 
-        # --- Salvar métricas em JSON quando executado em modo automático ---
+        # --- Save metrics to JSON when running in automated mode ---
         if run_id is not None:
             metrics_path = RESULTS_DIR / f"metricas_cliente_{client_id}_run_{run_id}.json"
             with open(metrics_path, 'w') as f:
                 json.dump(metrics, f, indent=4)
-            print(f"✓ Métricas salvas em: {metrics_path}")
+            print(f"✓ Metrics saved to: {metrics_path}")
 
         return metrics
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Cliente Flower para Federated Learning")
+    parser = argparse.ArgumentParser(description="Flower client for Federated Learning")
     parser.add_argument("--run", type=int, default=None,
-                        help="ID da run (usado para salvar métricas numeradas)")
+                        help="Run ID (used to save numbered metrics)")
     parser.add_argument("--client-id", type=int, default=0,
-                        help="ID do cliente (0, 1, 2, ...)")
+                        help="Client ID (0, 1, 2, ...)")
     args = parser.parse_args()
 
-    print(f"\n[CLIENTE {args.client_id}] Iniciando cliente Flower...")
+    print(f"\n[CLIENT {args.client_id}] Starting Flower client...")
     client = CnnClient()
     show = args.run is None  # Mostrar plots apenas em modo interativo
     try:
         fl.client.start_numpy_client(server_address="localhost:8080", client=client)
     except Exception as e:
-        print(f"\n[AVISO] Federated Learning encerrado: {e}")
+        print(f"\n[WARNING] Federated Learning stopped: {e}")
     finally:
-        print("\n[CLIENTE] Federated Learning finalizado. Gerando avaliação final...")
+        print("\n[CLIENT] Federated Learning finished. Generating final evaluation...")
         client.final_evaluation(run_id=args.run, client_id=args.client_id, show_plots=show)
-        print("\n[CLIENTE] Processo completado!")
+        print("\n[CLIENT] Process completed!")
