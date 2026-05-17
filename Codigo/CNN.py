@@ -43,10 +43,10 @@ if __name__ == "__main__":
     val_loader   = DataLoader(val_ds, batch_size=BATCH, shuffle=False, num_workers=4)
     test_loader  = DataLoader(test_ds, batch_size=BATCH, shuffle=False, num_workers=4)
 
-    # --- Modelo ---
+    # --- Model ---
     model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
 
-    # --- Congelar tudo inicialmente ---
+    # --- Freeze all initially ---
     for param in model.parameters():
         param.requires_grad = False
 
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-4)
 
-    # --- Fase 1: Treinar apenas a FC ---
-    print("\n=== Fase 1: Treinando apenas a camada final ===")
+    # --- Phase 1: Train only the FC ---
+    print("\n=== Phase 1: Training only the final layer ===")
     for epoch in range(WARMUP_EPOCHS):
         model.train()
         total, correct = 0, 0
@@ -76,8 +76,8 @@ if __name__ == "__main__":
             total += labels.size(0)
             loop.set_postfix(loss=loss.item(), acc=correct/total)
 
-    # --- Fase 2: Descongelar parte da ResNet ---
-    print("\n=== Fase 2: Fine-tuning da layer3 + layer4 ===")
+    # --- Phase 2: Unfreeze part of ResNet ---
+    print("\n=== Phase 2: Fine-tuning layer3 + layer4 ===")
     for name, param in model.named_parameters():
         if "layer3" in name or "layer4" in name or "fc" in name:
             param.requires_grad = True
@@ -101,11 +101,11 @@ if __name__ == "__main__":
             total += labels.size(0)
             loop.set_postfix(loss=loss.item(), acc=correct/total)
 
-    # --- Salvar modelo ---
+    # --- Save model ---
     torch.save(model.state_dict(), "model.pth")
-    print("\nModelo salvo em model.pth")
+    print("\nModel saved to model.pth")
 
-    # --- Avaliação ---
+    # --- Evaluation ---
     model.eval()
     all_preds, all_labels = [], []
     with torch.no_grad():

@@ -10,19 +10,19 @@ CLASSES = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented'
 SPLIT = {'train':0.7, 'val':0.15, 'test':0.15}
 random.seed(42)
 
-# --- Cria pastas Processed/train|val|test/CLASSE ---
+# --- Create Processed/train|val|test/CLASS folders ---
 def create_dirs():
     for split in SPLIT.keys():
         for cls in CLASSES:
             path = os.path.join(TARGET_DIR, split, cls)
             os.makedirs(path, exist_ok=True)
 
-# --- Copia imagens para as pastas Processed ---
+# --- Copy images to Processed folders ---
 def copy_images(src_dir):
     for cls in CLASSES:
         cls_path = os.path.join(src_dir, cls)
         if not os.path.exists(cls_path):
-            print(f"Atenção: pasta {cls_path} não existe, pulando.")
+            print(f"Warning: folder {cls_path} does not exist, skipping.")
             continue
         images = [f for f in os.listdir(cls_path) if f.lower().endswith('.jpg')]
         random.shuffle(images)
@@ -41,9 +41,9 @@ def copy_images(src_dir):
             dst_path = os.path.join(TARGET_DIR, split, cls, img_name)
             shutil.copy2(src_path, dst_path)
 
-# --- Execução ---
+# --- Run ---
 create_dirs()
 copy_images(ORIG_DIR)
 copy_images(AUG_DIR)
 
-print("Distribuição completa em:", TARGET_DIR)
+print("Distribution completed in:", TARGET_DIR)

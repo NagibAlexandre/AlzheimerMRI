@@ -25,7 +25,7 @@ IMG_SIZE = 224
 CLASSES = ['MildDemented', 'ModerateDemented', 'NonDemented', 'VeryMildDemented']
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ------------------ MODELO ------------------
+# ------------------ MODEL ------------------
 
 model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model.pth')
 
@@ -44,7 +44,7 @@ def getResNetModel(model_path=model_path):
     
     return model, DEVICE
 
-# ------------------ ESTILOS ------------------
+# ------------------ STYLES ------------------
 
 def getMainStylesheet(font_size=16):
     return f"""
@@ -286,7 +286,7 @@ def numpyToQpixmap(image):
     q_image = QImage(imageRgb.data, width, height, bytesPline, QImage.Format_RGB888)
     return QPixmap.fromImage(q_image)
     
-# ------------------ CONTROLE DE ZOOM ------------------
+# ------------------ ZOOM CONTROL ------------------
 class ZoomClass:
 
     def setup_zoom(self):
