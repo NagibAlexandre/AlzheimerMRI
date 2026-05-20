@@ -1,59 +1,58 @@
-# Sistema de Detecção de Alzheimer em Imagens de Ressonância Magnética
+## A Federated Learning Approach for Distributed Alzheimer’s Disease Diagnosis Using Brain MRI
 
-Este projeto implementa um sistema de classificação de imagens de ressonância magnética (MRI) para detecção de Alzheimer utilizando redes neurais convolucionais (CNN). O sistema é capaz de classificar imagens em quatro categorias: NonDemented (sem demência), VeryMildDemented (demência muito leve), MildDemented (demência leve) e ModerateDemented (demência moderada).
+This project implements a magnetic resonance imaging (MRI) classification system for Alzheimer's detection using convolutional neural networks (CNN). The system is capable of classifying images into four categories: NonDemented, VeryMildDemented, MildDemented, and ModerateDemented.
 
-O projeto utiliza uma arquitetura ResNet18 com transfer learning, implementa uma interface gráfica para classificação de imagens e suporta aprendizado federado através do framework Flower. O sistema processa tanto imagens em formato JPG quanto arquivos NIFTI (formato comum para imagens médicas).
+The project uses a ResNet18 architecture with transfer learning, implements a graphical interface for image classification, and supports federated learning through the Flower framework. The system processes both JPG images and NIFTI files (a common format for medical images).
 
-## Alunos integrantes da equipe
+### Team Members
 
-* João Vítor de Freitas Scarlatelli
-* Nagib Alexandre Verly Borjaili
-* Vitor Dias de Britto Militão
-* Vitória Símil Araújo
-* Yasmin Cassemiro Viegas
+- João Vítor de Freitas Scarlatelli
+- Nagib Alexandre Verly Borjaili
+- Vitor Dias de Britto Militão
+- Vitória Símil Araújo
+- Yasmin Cassemiro Viegas
 
-## Professores responsáveis
+### Supervising Professors
 
-* Henrique Cota de Freitas
-* João Paulo Coelho Furtado
+- Henrique Cota de Freitas
+- Felipe Domingos da Cunha
 
-## PITCH
+### PITCH
 
-https://www.youtube.com/watch?v=qCqW1E061YA
+[https://www.youtube.com/watch?v=qCqW1E061YA](https://www.youtube.com/watch?v=qCqW1E061YA)
 
-## Estrutura do Projeto
+### Project Structure
 
 ```
-.
-├── Codigo/                    # Código-fonte principal
-│   ├── CNN.py                 # Script de treinamento do modelo
-│   ├── TestTrain.py           # Script para preparar dataset (train/val/test)
-│   ├── infer.py               # Script de inferência e otimização de performance
-│   ├── model.pth              # Modelo treinado (gerado após treinamento)
+├── Codigo/                    # Main source code
+│   ├── CNN.py                 # Model training script
+│   ├── TestTrain.py           # Script to prepare dataset (train/val/test)
+│   ├── infer.py               # Inference and performance optimization script
+│   ├── model.pth              # Trained model (generated after training)
 │   ├── dataset/               # Datasets
-│   │   ├── OriginalDataset/   # Dataset original organizado por classe
-│   │   ├── AugmentedAlzheimerDataset/  # Dataset com dados aumentados
-│   │   └── Processed/         # Dataset processado (train/val/test)
-│   ├── flower/                # Implementação de aprendizado federado
-│   │   ├── client.py          # Cliente Flower
-│   │   ├── server.py          # Servidor Flower
-│   │   └── model.py           # Definição do modelo
-│   └── inteface/              # Interface gráfica
-│       └── interface.py       # Interface PyQt5 para classificação
-├── Artefatos/                 # Artefatos do projeto
-├── Documentacao/              # Documentação adicional
-└── Divulgacao/                # Materiais de divulgação
+│   │   ├── OriginalDataset/   # Original dataset organized by class
+│   │   ├── AugmentedAlzheimerDataset/  # Dataset with augmented data
+│   │   └── Processed/         # Processed dataset (train/val/test)
+│   ├── flower/                # Federated learning implementation
+│   │   ├── client.py          # Flower client
+│   │   ├── server.py          # Flower server
+│   │   └── model.py           # Model definition
+│   └── inteface/              # Graphical interface
+│       └── interface.py       # PyQt5 interface for classification
+├── Artefatos/                 # Project artifacts
+├── Documentacao/              # Additional documentation
+└── Divulgacao/                # Dissemination materials
 ```
 
-## Instruções de utilização
+## Usage Instructions
 
-### Pré-requisitos
+#### Prerequisites
 
-- Python 3.8 ou superior
-- CUDA (opcional, para aceleração GPU)
-- Sistema operacional: Windows, Linux ou macOS
+- Python 3.8 or higher
+- CUDA (optional, for GPU acceleration)
+- Operating system: Windows, Linux, or macOS
 
-### Instalação de dependências
+#### Installing Dependencies
 
 ```bash
 pip install torch torchvision
@@ -68,9 +67,9 @@ pip install flwr
 pip install pandas
 ```
 
-### Preparação do Dataset
+### Dataset Preparation
 
-1. Organize o dataset original na pasta `Codigo/dataset/OriginalDataset/` com a seguinte estrutura:
+1. Organize the original dataset in the `Codigo/dataset/OriginalDataset/` folder with the following structure:
    ```
    OriginalDataset/
    ├── NonDemented/
@@ -79,14 +78,14 @@ pip install pandas
    └── ModerateDemented/
    ```
 
-2. Execute o script de preparação do dataset:
+2. Run the dataset preparation script:
    ```bash
    cd Codigo
    python TestTrain.py
    ```
-   Este script criará a estrutura `Processed/train/`, `Processed/val/` e `Processed/test/` com divisão 70/15/15.
+   This script will create the `Processed/train/`, `Processed/val/`, and `Processed/test/` structure with a 70/15/15 split.
 
-### Treinamento do Modelo
+### Model Training
 
 Para treinar o modelo ResNet18:
 
@@ -95,78 +94,79 @@ cd Codigo
 python CNN.py
 ```
 
-O modelo será treinado em duas fases:
-1. **Warmup**: Treina apenas a camada final (5 épocas)
-2. **Fine-tuning**: Descongela e ajusta as camadas layer3, layer4 e fc (5 épocas)
+The model will be trained in two phases:
+1. **Warmup**: Trains only the final layer (5 epochs)
+2. **Fine-tuning**: Unfreezes and adjusts the layer3, layer4, and fc layers (5 epochs)
 
-O modelo treinado será salvo como `model.pth`.
+The trained model will be saved as `model.pth`.
 
-### Executar Interface Gráfica
+### Running the Graphical Interface
 
-Para usar a interface gráfica de classificação:
+To use the graphical classification interface:
 
 ```bash
 cd Codigo/inteface
 python interface.py
 ```
 
-A interface permite:
-- Carregar imagens (JPG, PNG, NIFTI)
-- Visualizar imagens com zoom
-- Classificar imagens usando o modelo treinado
-- Ver probabilidades para cada classe
+The interface allows you to:
+- Load images (JPG, PNG, NIFTI)
+- View images with zoom
+- Classify images using the trained model
+- View probabilities for each class
 
-### Inferência e Testes de Performance
+### Inference and Performance Testing
 
-Para executar testes de inferência e otimização de parâmetros:
+To run inference tests and parameter optimization:
 
 ```bash
 cd Codigo
 python infer.py
 ```
 
-Este script realiza um grid search testando diferentes combinações de:
+This script performs a grid search testing different combinations of:
 - Batch sizes: [2, 4, 8, 16, 32, 64, 128, 256]
 - Num workers: [2, 4, 8]
 - Num threads: [1, 2, 4, 8]
 
-Os resultados são salvos em `Codigo/results/` incluindo:
-- CSV e JSON com métricas
-- Gráficos de análise de throughput
-- Matriz de confusão da melhor configuração
 
-### Aprendizado Federado (Flower)
+Results are saved in `Codigo/results/`, including:
+- CSV and JSON with metrics
+- Throughput analysis charts
+- Confusion matrix of the best configuration
 
-Para executar treinamento federado:
+### Federated Learning (Flower)
 
-1. **Iniciar o servidor** (em um terminal):
+To run federated training:
+
+1. **Start the server** (in one terminal):
    ```bash
    cd Codigo/flower
    python server.py
    ```
 
-2. **Iniciar clientes** (em terminais separados, um para cada cliente):
+2. **Start clients** (in separate terminals, one per client):
    ```bash
    cd Codigo/flower
    python client.py
    ```
 
-O servidor aguarda 3 clientes por padrão. Cada cliente treina localmente e envia atualizações para o servidor.
+The server waits for 3 clients by default. Each client trains locally and sends updates to the server.
 
-## Tecnologias Utilizadas
+### Technologies Used
 
-- **PyTorch**: Framework de deep learning
-- **ResNet18**: Arquitetura de rede neural pré-treinada
-- **PyQt5**: Interface gráfica
-- **Flower**: Framework para aprendizado federado
-- **scikit-learn**: Métricas de avaliação
-- **nibabel**: Processamento de arquivos NIFTI
-- **OpenCV**: Processamento de imagens
+- **PyTorch**: Deep learning framework
+- **ResNet18**: Pre-trained neural network architecture
+- **PyQt5**: Graphical interface
+- **Flower**: Federated learning framework
+- **scikit-learn**: Evaluation metrics
+- **nibabel**: NIFTI file processing
+- **OpenCV**: Image processing
 
-## Classes de Classificação
+## Classification Classes
 
-O modelo classifica imagens em 4 categorias:
-- **NonDemented**: Sem demência
-- **VeryMildDemented**: Demência muito leve
-- **MildDemented**: Demência leve
-- **ModerateDemented**: Demência moderada
+The model classifies images into 4 categories:
+- **NonDemented**: No dementia
+- **VeryMildDemented**: Very mild dementia
+- **MildDemented**: Mild dementia
+- **ModerateDemented**: Moderate dementia
